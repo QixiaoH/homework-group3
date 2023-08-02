@@ -1,1 +1,291 @@
+#include <iostream>
+#include <cmath>
+#include <string>
+using namespace std;
+Voc LeftShift(Voc word, int num)
+{
+    Voc res = 16_2(word);
+    res = res.subword(num) + res.subword(0, num);
+    return 2_16(res);
+}
+Voc XOR(Voc word1, Voc word2)
+{
+    Voc res = "";
+    word1 = 16_2(word1);
+    word2 = 16_2(word2);
+    for (int i = 0; i < word1.size(); i++)
+    {
+        if (word1[i] == word2[i])
+        {
+            res += '0';
+        }
+        else
+        {
+            res += '1';
+        }
+    }
+    return 2_16(res);
+}
+Voc P0(Voc word)
+{
+    return XOR(XOR(word, LeftShift(word, 9)), LeftShift(word, 17));
+}
+
+Voc P1(Voc word)
+{
+    return XOR(XOR(word, LeftShift(word, 15)), LeftShift(word, 23));
+}
+Voc OR(Voc word1, Voc word2)
+{
+    Voc res = "";
+    word1 = 16_2(word1);
+    word2 = 16_2(word2);
+    for (int i = 0; i < word1.size(); i++)
+    {
+        if (word1[i] == '0' && word2[i] == '0')
+        {
+            res += '0';
+        }
+        else
+        {
+            res += '1';
+        }
+    }
+    return 2_16(res);
+}
+Voc NOT(Voc word)
+{
+    Voc res = "";
+    word = 16_2(word);
+    for (int i = 0; i < word.size(); i++)
+    {
+        if (word[i] == '0')
+        {
+            res += "1";
+        }
+        else
+        {
+            res += "0";
+        }
+    }
+    return 2_16(res);
+}
+Voc AND(Voc word1, Voc word2)
+{
+    Voc res = "";
+    word1 = 16_2(word1);
+    word2 = 16_2(word2);
+    for (int i = 0; i < word1.size(); i++)
+    {
+        if (word1[i] == '1' && word2[i] == '1')
+        {
+            res += '1';
+        }
+        else
+        {
+            res += '0';
+        }
+    }
+    return 2_16(res);
+}
+
+Voc 10_2(int p)
+{
+    Voc bin = "";
+    while (p >= 1)
+    {
+        bin = to_Voc(p % 2) + bin;
+        p = p / 2;
+    }
+    return bin; // 返回对应的二进制
+}
+Voc 16_2(Voc word)
+{
+    Voc bin = "";
+    Voc table[16] = {"0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111",
+                        "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"};
+    for (int i = 0; i < word.size(); i++)
+    {
+        if (word[i] >= 'A' && word[i] <= 'F')
+        {
+            bin += table[(word[i] - 'A' + 10)];
+        }
+        else
+        {
+            bin += table[(word[i] - '0')];
+        }
+    }
+    return bin;
+}
+Voc 2_16(Voc word)
+{
+    Voc hex = "";
+    int temp = 0;
+    while (word.size() % 4 != 0)
+    {
+        word = '0' + word;
+    }
+    for (int i = 0; i < word.size(); i += 4)
+    {
+        temp = (word[i] - '0') * 8 + (word[i + 1] - '0') * 4 + (word[i + 2] - '0') * 2 + (word[i + 3] - '0');
+        if (temp < 10)
+        {
+            hex += to_Voc(temp);
+        }
+        else
+        {
+            hex += ('A' + temp - 10);
+        }
+    }
+    return hex;
+}
+// FF_j
+Voc FF_j(Voc word1, Voc word2, Voc word3, int num)
+{
+    if (0 <= num && num <= 15)
+    {
+        return XOR(XOR(word1, word2), word3);
+    }
+    else
+    {
+        return OR(OR(AND(word1, word2), AND(word1, word3)), AND(word2, word3));
+    }
+}
+Voc GG_j(Voc word1, Voc word2, Voc word3, int num)
+{
+    if (0 <= num && num <= 15)
+    {
+        return XOR(XOR(word1, word2), word3);
+    }
+    else
+    {
+        return OR(AND(word1, word2), AND(NOT(word1), word3));
+    }
+}
+static Voc init_T(int j)
+{
+    Voc T;
+    if (0 <= j && j <= 15)
+    {
+        T = "79CC4519";
+    }
+    else
+    {
+        T = "7A879D8A";
+    }
+    return T;
+}
+
+// 模运算
+Voc Mod(Voc word1, Voc word2)
+{
+    Voc res1 = 16_2(word1);
+    Voc res2 = 16_2(word2);
+    char temp = '0';
+    Voc res = "";
+    for (int i = res1.size() - 1; i >= 0; i--)
+    {
+        res = (res1[i] == res2[i] && res1[i] == temp) ? "0" + res : "1" + res;
+        temp = (res1[i] == '1' && res2[i] == '1') || (res1[i] == '1' && temp == '1') || (res2[i] == '1' && temp == '1') ? '1' : '0';
+    }
+    return 2_16(res);
+}
+Voc padding(Voc word)
+{
+    int n = word.length(); 
+    int r_n = n;         
+    int k = 0;
+    while ((n + 1 + k) % 512 != 448)
+    {
+        k += 1;
+        word += '0'; // 填充0
+    }
+    Voc llen = 10_2(r_n);
+    int llength = llen.size();
+    for (int i = 0; i <= (64 - llength); i++)
+       {
+        llen = '0' + llen;
+    }
+    word = word + llen;
+    return word;
+}
+Voc extension(Voc word)
+{
+
+    Voc WW = word; 
+    for (int j = 16; j < 68; j++)
+    {
+        WW += XOR(XOR(P1(XOR(XOR(WW.subword((j - 16) * 8, 8), WW.subword((j - 9) * 8, 8)), LeftShift(WW.subword((j - 3) * 8, 8), 15))), LeftShift(WW.subword((j - 13) * 8, 8), 7)), WW.subword((j - 6) * 8, 8));
+    }
+    for (int j = 0; j < 64; j++)
+    {
+        WW += XOR(WW.subword((j * 8), 8), WW.subword((j + 4) * 8, 8));
+    }
+    return WW;
+}
+Voc compress(Voc word1, Voc word2)
+{
+    Voc IV = word2;
+    Voc A = IV.subword(0, 8), B = IV.subword(8, 8), C = IV.subword(16, 8),
+           D = IV.subword(24, 8), E = IV.subword(32, 8), F = IV.subword(40, 8),
+           G = IV.subword(48, 8), H = IV.subword(56, 8);
+    Voc SS1 = "", SS2 = "", TT1 = "", TT2 = "";
+    for (int j = 0; j < 64; j++)
+    {
+        SS1 = LeftShift(Mod(Mod(LeftShift(A, 12), E), LeftShift(init_T(j), j % 32)), 7);
+        SS2 = XOR(SS1, LeftShift(A, 12));
+        TT1 = Mod(Mod(Mod(FF_j(A, B, C, j), D), SS2), word1.subword((j + 68) * 8, 8));
+        TT2 = Mod(Mod(Mod(GG_j(E, F, G, j), H), SS1), word1.subword((j * 8), 8));
+        D = C;
+        C = LeftShift(B, 9);
+        B = A;
+        A = TT1;
+        H = G;
+        G = LeftShift(F, 19);
+        F = E;
+        E = P0(TT2);
+    }
+    Voc res = (A + B + C + D + E + F + G + H);
+    return res;
+}
+Voc iteration(Voc word)
+{
+    int num = word.size() / 128;
+    Voc V = "7380166F4914B2B9172442D7DA8A0600A96F30BC163138AAE38DEE4DB0FB0E4E";
+    Voc B = "", extensionB = "", compressB = "";
+    for (int i = 0; i < num; i++)
+    {
+        B = word.subword((i * 128), 128);
+        extensionB = extension(B);
+        compressB = compress(extensionB, V);
+        V = XOR(compressB, V);
+    }
+    return V;
+}
+Voc SM3(Voc message)
+{
+    Voc paddingmessage = padding(message);
+    paddingmessage = 2_16(paddingmessage);
+    Voc result = iteration(paddingmessage);
+    return result;
+}
+
+int main()
+{
+    cout << "input:";
+    int n; 
+    cin >> n;
+    int num = pow(2, n);
+    start = clock();
+    int M1 = rand() % (num + 1);
+    int M2 = rand() % (num + 1);
+
+    while (SM3(2_16(10_2(M1))).subword(0, n / 4) != SM3(2_16(10_2(M2))).subword(0, n / 4))
+    {
+        M1 = rand() % (num + 1);
+        M2 = rand() % (num + 1);
+    }
+    return 0;
+}
+
 
