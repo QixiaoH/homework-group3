@@ -1,1 +1,178 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <ctime>
+
+#define IV_SIZE 8
+
+using namespace std;
+
+// 定义状态V的初始值
+const uint32_t IV[IV_SIZE] = {
+    0x7380166F, 0x4914B2B9, 0x172442D7, 0xDA8A0600,
+    0xA96F30BC, 0x163138AA, 0xE38DEE4D, 0xB0FB0E4E
+};
+
+// 左移操作
+uint32_t leftshift(uint32_t s, int l) {
+    l = l % 32;
+    return ((s << l) & 0xFFFFFFFF) | ((s & 0xFFFFFFFF) >> (32 - l));
+}
+
+// FF函数
+uint32_t FF(uint32_t s1, uint32_t s2, uint32_t s3, int i) {
+    if (i >= 0 && i <= 15) {
+        return s1 ^ s2 ^ s3;
+    }
+    else {
+        return ((s1 & s2) | (s1 & s3) | (s2 & s3));
+    }
+}
+
+// GG函数
+uint32_t GG(uint32_t s1, uint32_t s2, uint32_t s3, int i) {
+    if (i >= 0 && i <= 15) {
+        return s1 ^ s2 ^ s3;
+    }
+    else {
+        return ((s1 & s2) | (~s1 & s3));
+    }
+}
+
+// P0函数
+uint32_t P0(uint32_t s) {
+    return s ^ leftshift(s, 9) ^ leftshift(s, 17);
+}
+
+// P1函数
+uint32_t P1(uint32_t s) {
+    return s ^ leftshift(s, 15) ^ leftshift(s, 23);
+}
+
+// T函数
+uint32_t T(int i) {
+    if (i >= 0 && i <= 15) {
+        return 0x79cc4519;
+    }
+    else {
+        return 0x7a879d8a;
+    }
+}
+
+// 消息填充
+string padding(const string& message) {
+    string m = "";
+    for (char c : message) {
+        m += bitset<4>(c - '0').to_string(); // 将输入的十六进制消息转换为二进制形式
+    }
+    int l = m.size();
+    int l_bin = l;
+    string len_bin = bitset<64>(l_bin).to_string(); // 将消息的长度转换为二进制，并补齐位数
+    m += '1'; // 在消息的末尾添加一个比特位'1'
+    m += string(448 - l % 512, '0'); // 在消息的末尾补充0，使得消息总长度满足对512取余等于448的要求
+    m += len_bin; // 添加消息长度
+    return m;
+}
+
+// 切分消息为块
+vector<string> block(const string& m) {
+    vector<string> M;
+    int n = m.size() / 128;
+    for (int i = 0; i < n; i++) {
+        M.push_back(m.substr(128 * i, 128)); // 将填充后的消息切分成128位的块
+    }
+    return M;
+}
+
+// 消息扩展
+vector<uint32_t> message_extension(const vector<string>& M, int n) {
+    vector<uint32_t> W;
+    vector<uint32_t> W1;
+    for (int j = 0; j < 16; j++) {
+        uint32_t x;
+        sscanf(M[n].substr(32 * j, 32).c_str(), "%x", &x);
+        W.push_back(x); // 将块中的十六进制值转换为整数并存储到W中
+    }
+    for (int j = 16; j < 68; j++) {
+        W.push_back(P1(W[j - 16] ^ W[j - 9] ^ leftshift(W[j - 3], 15)) ^ leftshift(W[j - 13], 7) ^ W[j - 6]); // 进行消息扩展
+    }
+    for (int j = 0; j < 64; j++) {
+        W1.push_back(W[j] ^ W[j + 4]); // 生成W1
+    }
+    return W1;
+}
+
+// 消息压缩
+vector<uint32_t> message_compress(const vector<uint32_t>& V, const vector<string>& M, int i) {
+    uint32_t A = V[i];
+    uint32_t B = V[i + 1];
+    uint32_t C = V[i + 2];
+    uint32_t D = V[i + 3];
+    uint32_t E = V[i + 4];
+    uint32_t F = V[i + 5];
+    uint32_t G = V[i + 6];
+    uint32_t H = V[i + 7];
+    vector<uint32_t> W = message_extension(M, i); // 进行消息扩展
+    for (int j = 0; j < 64; j++) {
+        uint32_t SS1 = leftshift((leftshift(A, 12) + E + leftshift(T(j), j % 32)) % (1 << 32), 7); // 计算SS1
+        uint32_t SS2 = SS1 ^ leftshift(A, 12); // 计算SS2
+        uint32_t TT1 = (FF(A, B, C, j) + D + SS2 + W[j]) % (1 << 32); // 计算TT1
+        uint32_t TT2 = (GG(E, F, G, j) + H + SS1 + W[j]) % (1 << 32); // 计算TT2
+        D = C;
+        C = leftshift(B, 9);
+        B = A;
+        A = TT1;
+        H = G;
+        G = leftshift(F, 19);
+        F = E;
+        E = P0(TT2);
+    }
+    vector<uint32_t> V1 = { V[i] ^ A, V[i + 1] ^ B, V[i + 2] ^ C, V[i + 3] ^ D, V[i + 4] ^ E, V[i + 5] ^ F, V[i + 6] ^ G, V[i + 7] ^ H }; // 更新状态V
+    return V1;
+}
+
+// SM3哈希函数
+vector<uint32_t> SM3(const vector<string>& M) {
+    int n = M.size();
+    vector<uint32_t> V(IV, IV + IV_SIZE); // 初始化状态V
+    for (int i = 0; i < n; i++) {
+        V = message_compress(V, M, i); // 进行消息压缩
+    }
+    return V; // 返回哈希结果
+}
+
+// Rho攻击
+void rho_attack() {
+    vector<string> random_value; // 存储已生成的随机值
+    while (true) {
+        uint64_t r = rand() % (1ull << 64); // 生成64位的随机数
+        string m = padding(to_string(r)); // 对随机数进行填充
+        vector<string> M = block(m); // 将填充后的消息切分成128位块
+        vector<uint32_t> Mn = SM3(M); // 对消息进行哈希运算
+        string tmp = "";
+        for (int k = 0; k < IV_SIZE; k++) {
+            char buffer[9];
+            snprintf(buffer, sizeof(buffer), "%08x", Mn[k]);
+            tmp += buffer; // 将哈希结果转换为十六进制字符串
+        }
+        string t = tmp.substr(0, 2); // 提取哈希结果的前两个字节
+        if (find(random_value.begin(), random_value.end(), t) != random_value.end()) {
+            cout << "Rho攻击成功!" << endl; // 攻击成功
+            break;
+        }
+        else {
+            random_value.push_back(t);
+        }
+    }
+}
+
+int main() {
+    srand(time(0)); // 设置随机种子
+    clock_t start = clock();
+    rho_attack(); // 执行Rho攻击
+    clock_t end = clock();
+    cout << "运行时间：" << (double)(end - start) * 1000 / CLOCKS_PER_SEC << "ms" << endl; // 打印运行时间
+    return 0;
+}
 
