@@ -1,1 +1,254 @@
+#include <iostream>
+#include <string>
+#include <cmath>
+#include <vector>
+#include<bitset>
 
+using namespace std;
+
+// 初始化向量 IV
+vector<uint32_t> IV = { 0x7380166F, 0x4914B2B9, 0x172442D7, 0xDA8A0600,
+                       0xA96F30BC, 0x163138AA, 0xE38DEE4D, 0xB0FB0E4E };
+
+// 左移函数
+uint32_t leftshift(uint32_t s, int l)
+{
+    l = l % 32;
+    return (((s << l) & 0xFFFFFFFF) | ((s & 0xFFFFFFFF) >> (32 - l)));
+}
+
+// 轮函数 FF
+uint32_t FF(uint32_t s1, uint32_t s2, uint32_t s3, int i)
+{
+    if (i >= 0 && i <= 15)
+    {
+        return s1 ^ s2 ^ s3;
+    }
+    else
+    {
+        return ((s1 & s2) | (s1 & s3) | (s2 & s3));
+    }
+}
+
+// 轮函数 GG
+uint32_t GG(uint32_t s1, uint32_t s2, uint32_t s3, int i)
+{
+    if (i >= 0 && i <= 15)
+    {
+        return s1 ^ s2 ^ s3;
+    }
+    else
+    {
+        return ((s1 & s2) | (~s1 & s3));
+    }
+}
+
+// 置换函数 P0
+uint32_t P0(uint32_t s)
+{
+    return s ^ leftshift(s, 9) ^ leftshift(s, 17);
+}
+
+// 置换函数 P1
+uint32_t P1(uint32_t s)
+{
+    return s ^ leftshift(s, 15) ^ leftshift(s, 23);
+}
+
+// 常量函数 T
+uint32_t T(int i)
+{
+    if (i >= 0 && i <= 15)
+    {
+        return 0x79cc4519;
+    }
+    else
+    {
+        return 0x7a879d8a;
+    }
+}
+
+// 消息填充函数
+string padding(string message)
+{
+    string m = "";
+    for (char c : message)
+    {
+        m += bitset<4>(string("0123456789abcdef").find(tolower(c))).to_string();
+    }
+    int l = m.length();
+    string l_bin = bitset<64>(l).to_string();
+    m += "1";
+    m += string(448 - m.length() % 512, '0') + l_bin;
+    string result = "";
+    for (int i = 0; i < m.length(); i += 4)
+    {
+        int dec = stoi(m.substr(i, 4), nullptr, 2);
+        result += string("0123456789abcdef")[dec];
+    }
+    return result;
+}
+
+// 分块函数
+vector<string> block(string m)
+{
+    int n = m.length() / 128;
+    vector<string> M;
+    for (int i = 0; i < n; i++)
+    {
+        M.push_back(m.substr(i * 128, 128));
+    }
+    return M;
+}
+
+// 消息扩展函数
+pair<vector<uint32_t>, vector<uint32_t>> message_extension(vector<string> M, int n)
+{
+    vector<uint32_t> W, W1;
+    for (int j = 0; j < 16; j++)
+    {
+        string hex_value = M[n].substr(j * 8, 8);
+        uint32_t dec_value = stoul(hex_value, nullptr, 16);
+        W.push_back(dec_value);
+    }
+    for (int j = 16; j < 68; j++)
+    {
+        uint32_t value = P1(W[j - 16] ^ W[j - 9] ^ leftshift(W[j - 3], 15)) ^ leftshift(W[j - 13], 7) ^ W[j - 6];
+        W.push_back(value);
+    }
+    for (int j = 0; j < 64; j++)
+    {
+        uint32_t value = W[j] ^ W[j + 4];
+        W1.push_back(value);
+    }
+    return make_pair(W, W1);
+}
+
+// 消息压缩函数
+vector<uint32_t> message_compress(vector<vector<uint32_t>>& V, vector<string> M, int i)
+{
+    vector<uint32_t> A, B, C, D, E, F, G, H;
+    tie(A, B, C, D, E, F, G, H) = V[i];
+    vector<uint32_t> W, W1;
+    tie(W, W1) = message_extension(M, i);
+    for (int j = 0; j < 64; j++)
+    {
+        uint32_t SS1 = leftshift((leftshift(A[j], 12) + E[j] + leftshift(T(j), j % 32)) % (1U << 32), 7);
+        uint32_t SS2 = SS1 ^ leftshift(A[j], 12);
+        uint32_t TT1 = (FF(A[j], B[j], C[j], j) + D[j] + SS2 + W1[j]) % (1U << 32);
+        uint32_t TT2 = (GG(E[j], F[j], G[j], j) + H[j] + SS1 + W[j]) % (1U << 32);
+        D[j] = C[j];
+        C[j] = leftshift(B[j], 9);
+        B[j] = A[j];
+        A[j] = TT1;
+        H[j] = G[j];
+        G[j] = leftshift(F[j], 19);
+        F[j] = E[j];
+        E[j] = P0(TT2);
+    }
+    vector<uint32_t> V1;
+    for (int j = 0; j < 8; j++)
+    {
+        V1.push_back(A[j] ^ A[j + 8]);
+        V1.push_back(B[j] ^ B[j + 8]);
+        V1.push_back(C[j] ^ C[j + 8]);
+        V1.push_back(D[j] ^ D[j + 8]);
+        V1.push_back(E[j] ^ E[j + 8]);
+        V1.push_back(F[j] ^ F[j + 8]);
+        V1.push_back(G[j] ^ G[j + 8]);
+        V1.push_back(H[j] ^ H[j + 8]);
+    }
+    return V1;
+}
+
+// SM3 哈希算法
+vector<uint32_t> SM3(vector<string> M, vector<uint32_t> IV)
+{
+    int n = M.size();
+    vector<vector<uint32_t>> V;
+    V.push_back(IV);
+    for (int i = 0; i < n; i++)
+    {
+        V.push_back(message_compress(V, M, i));
+    }
+    return V[n];
+}
+
+// 生成指定数量随机数的函数
+vector<uint64_t> randomnum(int n)
+{
+    vector<uint64_t> rn;
+    while (rn.size() < n)
+    {
+        uint64_t i = static_cast<uint64_t>(rand()) << 32 | static_cast<uint64_t>(rand());
+        if (find(rn.begin(), rn.end(), i) == rn.end())
+        {
+            rn.push_back(i);
+        }
+    }
+    return rn;
+}
+
+// 长度扩展攻击函数
+vector<uint32_t> lengthextension_attack(string m, vector<uint32_t> IV, int n)
+{
+    for (int i = 0; i < n; i++)
+    {
+        m = '0' + m;
+    }
+    string M = padding(m);
+    vector<string> M1 = block(M);
+    vector<uint32_t> h = SM3(M1, IV);
+    return h;
+}
+
+int main()
+{
+    srand(time(NULL));
+    vector<string> random_value;
+    string r1 = "20220430";
+    string r2 = "20220601";
+    string m = padding(r1);
+    vector<string> M = block(m);
+    vector<uint32_t> t = SM3(M, IV);
+    string h1 = "";
+    for (uint32_t k : t)
+    {
+        h1 += to_string(k);
+    }
+    random_value.push_back(h1);
+
+    string m1 = padding(m + r2);
+    vector<string> M1 = block(m1);
+    vector<uint32_t> t1 = SM3(M1, IV);
+    string h2 = "";
+    for (uint32_t k : t1)
+    {
+        h2 += to_string(k);
+    }
+    random_value.push_back(h2);
+
+    vector<uint32_t> t2 = lengthextension_attack(r2, t, 128);
+    string h3 = "";
+    for (uint32_t k : t2)
+    {
+        h3 += to_string(k);
+    }
+    random_value.push_back(h3);
+
+    cout << "r1||padding||r2:" << endl;
+    cout << m << r2 << endl;
+
+    cout << "\nh2:" << endl;
+    cout << random_value[1] << endl;
+
+    cout << "\nh3:" << endl;
+    cout << random_value[2] << endl;
+
+    if (random_value[1] == random_value[2])
+    {
+        cout << "\n长度扩展攻击成功!" << endl;
+    }
+
+    return 0;
+}
