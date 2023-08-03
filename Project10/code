@@ -1,1 +1,118 @@
+#include <stdio.h>
+#include <openssl/ec.h>
+#include <openssl/ecdsa.h>
+#include <openssl/obj_mac.h>
+#include <openssl/rand.h>
 
+// 生成ECDSA密钥对
+EC_KEY* generate_ec_key() {
+    EC_KEY *eckey = EC_KEY_new_by_curve_name(NID_secp256k1);
+    if (!eckey) {
+        printf("Error creating EC key.\n");
+        return NULL;
+    }
+
+    if (!EC_KEY_generate_key(eckey)) {
+        printf("Error generating EC key.\n");
+        EC_KEY_free(eckey);
+        return NULL;
+    }
+
+    return eckey;
+}
+
+// ECDSA签名
+int ecdsa_sign(const uint8_t* msg, size_t msg_len, const EC_KEY* eckey, uint8_t* sig, size_t* sig_len) {
+    if (!msg || !eckey || !sig || !sig_len) {
+        printf("Invalid input parameters.\n");
+        return 0;
+    }
+
+    ECDSA_SIG *signature = ECDSA_do_sign(msg, msg_len, (EC_KEY*)eckey);
+    if (!signature) {
+        printf("Error signing the message.\n");
+        return 0;
+    }
+
+    const BIGNUM *r, *s;
+    ECDSA_SIG_get0(signature, &r, &s);
+
+    size_t r_len = BN_num_bytes(r);
+    size_t s_len = BN_num_bytes(s);
+
+    if (*sig_len < r_len + s_len) {
+        printf("Signature buffer too small.\n");
+        ECDSA_SIG_free(signature);
+        return 0;
+    }
+
+    memset(sig, 0, *sig_len);
+    BN_bn2bin(r, sig);
+    BN_bn2bin(s, sig + r_len);
+    *sig_len = r_len + s_len;
+
+    ECDSA_SIG_free(signature);
+    return 1;
+}
+
+// ECDSA验证
+int ecdsa_verify(const uint8_t* msg, size_t msg_len, const EC_KEY* eckey, const uint8_t* sig, size_t sig_len) {
+    if (!msg || !eckey || !sig || sig_len < 64) {
+        printf("Invalid input parameters.\n");
+        return 0;
+    }
+
+    ECDSA_SIG *signature = ECDSA_SIG_new();
+    if (!signature) {
+        printf("Error creating signature object.\n");
+        return 0;
+    }
+
+    BIGNUM *r = BN_new();
+    BIGNUM *s = BN_new();
+
+    BN_bin2bn(sig, 32, r);
+    BN_bin2bn(sig + 32, 32, s);
+
+    ECDSA_SIG_set0(signature, r, s);
+
+    int result = ECDSA_do_verify(msg, msg_len, signature, (EC_KEY*)eckey);
+
+    ECDSA_SIG_free(signature);
+    BN_free(r);
+    BN_free(s);
+
+    return result;
+}
+
+int main() {
+    // 生成密钥对
+    EC_KEY *eckey = generate_ec_key();
+    if (!eckey) {
+        return -1;
+    }
+
+    // 待签名的消息
+    uint8_t msg[] = "Hello, ECDSA!";
+    size_t msg_len = strlen((const char*)msg);
+
+    // 签名
+    uint8_t sig[64];
+    size_t sig_len = sizeof(sig);
+    int ret = ecdsa_sign(msg, msg_len, eckey, sig, &sig_len);
+    if (!ret) {
+        EC_KEY_free(eckey);
+        return -1;
+    }
+
+    // 验证签名
+    ret = ecdsa_verify(msg, msg_len, eckey, sig, sig_len);
+    if (ret) {
+        printf("Signature verification successful.\n");
+    } else {
+        printf("Signature verification failed.\n");
+    }
+
+    EC_KEY_free(eckey);
+    return 0;
+}
