@@ -1,1 +1,92 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <openssl/sha.h> // For SHA-256 hash function
 
+// Function to compute SHA-256 hash of a string
+std::string computeSHA256Hash(const std::string& data) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, data.c_str(), data.size());
+    SHA256_Final(hash, &sha256);
+
+    std::string hashStr;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        hashStr += hash[i];
+    }
+    return hashStr;
+}
+struct MerkleNode {
+    std::string hash;
+    MerkleNode* left;
+    MerkleNode* right;
+
+    MerkleNode(const std::string& data) : hash(data), left(nullptr), right(nullptr) {}
+};
+MerkleNode* buildMerkleTree(const std::vector<std::string>& data) {
+    std::vector<MerkleNode*> leaves;
+
+    // Create leaf nodes for each data element and compute their hashes
+    for (const std::string& str : data) {
+        leaves.push_back(new MerkleNode(computeSHA256Hash(str)));
+    }
+
+    if (leaves.empty()) {
+        return nullptr;
+    }
+
+    // Construct the tree by repeatedly combining pairs of nodes
+    while (leaves.size() > 1) {
+        std::vector<MerkleNode*> parents;
+        for (size_t i = 0; i < leaves.size(); i += 2) {
+            MerkleNode* leftChild = leaves[i];
+            MerkleNode* rightChild = (i + 1 < leaves.size()) ? leaves[i + 1] : nullptr;
+            std::string combinedData = leftChild->hash + (rightChild ? rightChild->hash : "");
+            MerkleNode* parent = new MerkleNode(computeSHA256Hash(combinedData));
+            parent->left = leftChild;
+            parent->right = rightChild;
+            parents.push_back(parent);
+        }
+        leaves = parents;
+    }
+
+    return leaves[0];
+}
+bool verifyInclusion(const std::string& data, const std::string& rootHash, MerkleNode* treeRoot) {
+    MerkleNode* node = treeRoot;
+    std::string targetHash = computeSHA256Hash(data);
+
+    while (node) {
+        if (node->hash == targetHash) {
+            return true;
+        }
+
+        if (node->hash > targetHash) {
+            node = node->left;
+        }
+        else {
+            node = node->right;
+        }
+    }
+
+    return false;
+}int main() {
+    std::vector<std::string> data = { "data1", "data2", "data3", "data4" };
+    MerkleNode* root = buildMerkleTree(data);
+
+    // Verify inclusion of "data2"
+    bool isIncluded = verifyInclusion("data2", root->hash, root);
+    std::cout << "Data2 is " << (isIncluded ? "included" : "not included") << " in the Merkle Tree." << std::endl;
+
+    // Clean up memory (not necessary in actual usage, just for demonstration)
+    // In a real application, you may want to use smart pointers to manage memory.
+    // Note: This is a simplified example and may not handle edge cases.
+    delete root->left->left;
+    delete root->left;
+    delete root->right->left;
+    delete root->right;
+    delete root;
+
+    return 0;
+}
