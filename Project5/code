@@ -71,22 +71,12 @@ bool verifyInclusion(const std::string& data, const std::string& rootHash, Merkl
     }
 
     return false;
-}int main() {
+}
+int main() {
     std::vector<std::string> data = { "data1", "data2", "data3", "data4" };
-    MerkleNode* root = buildMerkleTree(data);
+    std::string rootHash = buildMerkleTree(data);
 
-    // Verify inclusion of "data2"
-    bool isIncluded = verifyInclusion("data2", root->hash, root);
-    std::cout << "Data2 is " << (isIncluded ? "included" : "not included") << " in the Merkle Tree." << std::endl;
-
-    // Clean up memory (not necessary in actual usage, just for demonstration)
-    // In a real application, you may want to use smart pointers to manage memory.
-    // Note: This is a simplified example and may not handle edge cases.
-    delete root->left->left;
-    delete root->left;
-    delete root->right->left;
-    delete root->right;
-    delete root;
+    std::cout << "Root Hash: " << rootHash << std::endl;
 
     return 0;
 }
