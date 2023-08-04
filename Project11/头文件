@@ -1,0 +1,52 @@
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+ 
+#define SM2_PUB_KEY_SIZE     178      
+ 
+typedef struct SM2_KEY
+{
+	uint8_t *pub_key;
+	uint8_t *pri_key;
+} T_sm2_key;
+ 
+typedef struct ENCRYPT_KEY
+{
+	uint8_t *text;
+	int len;
+} T_encrypt_key;
+ 
+typedef struct DECRYPT_KEY
+{
+	uint8_t *text;
+	int len;
+} T_decrypt_key;
+ 
+//得到椭圆曲线（EC_KEY）
+// key – 密钥
+// is_public – 是否公钥（0：否，1:是）
+// return – 椭圆曲线（EC_KEY）
+EC_KEY* CreateEC(unsigned char* key, int is_public);
+ 
+// 生成SM2 Key
+// return – SM2密钥（T_sm2_key）
+T_sm2_key GenKey(void);
+ 
+// SM2加密
+// public_key – 公钥
+// plain_text – 明文
+// pResOut – 返回值
+int Encrypt(const char *public_key, uint8_t plain_text[UID_LEN], int plain_len);
+ 
+// SM2解密
+// public_key – 私钥
+// plain_text – 密文
+// pResOut – 返回值
+int Decrypt(const char *private_key, T_encrypt_key *enc_text, T_decrypt_key *pResOut);
+ 
+#ifdef __cplusplus
+}
+#endif
+ 
+#endif 
